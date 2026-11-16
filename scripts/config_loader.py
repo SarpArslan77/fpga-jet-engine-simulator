@@ -157,6 +157,8 @@ class InertiaConfig:
     thermal_time_const: float
     pre_calculated_thermal_time_const_quantized: int
 
+    settling_band: float #TODO Update docstring and add post-init verification.
+
     def __post_init__(self) -> None:
         """
         Validates that all physical time constants are strictly positive.
@@ -534,7 +536,8 @@ class ConfigLoader:
                 "inertia": {
                     "rotor_inertial_time_const",
                     "pressure_volume_time_const",
-                    "thermal_time_const"
+                    "thermal_time_const",
+                    "settling_band"
                 },
                 "gain": {
                     "speed_gain_coeff",
@@ -706,7 +709,8 @@ class ConfigLoader:
             pressure_volume_time_const = PRESSURE_VOLUME_TIME_CONST,
             pre_calculated_pressure_volume_time_const_quantized = PRE_CALCULATED_PRESSURE_VOLUME_TIME_CONST_QUANTIZED,
             thermal_time_const = THERMAL_TIME_CONST,
-            pre_calculated_thermal_time_const_quantized = PRE_CALCULATED_THERMAL_TIME_CONST_QUANTIZED
+            pre_calculated_thermal_time_const_quantized = PRE_CALCULATED_THERMAL_TIME_CONST_QUANTIZED,
+            settling_band = cfg["inertia"]["settling_band"]
         )
 
         # -> Gain.
