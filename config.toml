@@ -14,6 +14,7 @@ ambient_temperature = 15.0
 rotor_inertial_time_const = 1.5 #TODO Explain in LaTex how it is derived from the paper.
 pressure_volume_time_const = 0.15
 thermal_time_const = 0.8
+settling_band = 0.2
 
 [gain]
 speed_gain_coeff = 1.0
