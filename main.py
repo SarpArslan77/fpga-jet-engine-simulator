@@ -34,6 +34,7 @@ from sim_model.aircraft_engine_simulator_floating import (
     ConfigAircraftEngineSimulatorFloating,
 )
 from sim_model.graph_visualizer import ConfigGraphVisualizer, GraphVisualizer
+from sim_model.verify_physical_realism import ConfigPhysicalRealismVerifier, PhysicalRealismVerifier
 from sim_model.verify_software import SoftwareVerifier
 from subprocess import CompletedProcess
 
@@ -189,13 +190,23 @@ if __name__ == "__main__":
         verilog_header_file_dir_path = RTL_DIR_PATH
     )
 
+    # Calculates some parameters dynamically.
+    slowest_time_const: float = max(
+        cfg.inertia.rotor_inertial_time_const,
+        cfg.inertia.pressure_volume_time_const,
+        cfg.inertia.thermal_time_const
+    )
+    # TODO Mention why this formula is used.
+    settling_duration: float = slowest_time_const * np.log(cfg.inertia.settling_band)
+    plateau_duration: float = np.ceil(settling_duration)
+
     # ------- Parsing. -------
     # Creates top-level parser.
     parser = ArgumentParser(description = "Aircraft Engine Simulation & Verification Pipeline.")
-    
+
     # Mutually exclusive group: either a single synthesis run OR a frequency sweep, never both.
     synthesizer_group = parser.add_mutually_exclusive_group()
-    
+
     #? nargs: Number of arguments:
     #   -> '?': 0 or 1 value.
     #   -> '*': 0 or more values.
@@ -214,7 +225,7 @@ if __name__ == "__main__":
         default = None,
         help = f"Run single Out-of-Context synthesis. Optional target period in [ns] (default: {cfg.synthesis.synth_target_period})."
     )
-    
+
     # Sweeps target periods in an interval to discover maximum frequency (F_max).
     # -> 'python main.py --sweep': Uses [LOW_PERIOD, HIGH_PERIOD].
     # -> 'python main.py --sweep 1.0 20.0': Uses [1.000, 20.000] ns.
@@ -228,14 +239,14 @@ if __name__ == "__main__":
             " Pass 0 arguments for defaults or 2 bounds:" \
             " LOW HIGH in [ns] (e.g., --sweep 2.0 10.0)."
     )
-    
+
     # Runs code linters.
     parser.add_argument(
         "--lint",
         action = "store_true",
         help = "Run Ruff, Veribe and Verilator linting checks."
     )
-    
+
     # Parses the command-line arguments.
     args: Namespace = parser.parse_args()
 
@@ -263,7 +274,7 @@ if __name__ == "__main__":
             )
 
             ruff_status = "SUCCESS" if ruff_result.returncode == 0 else "FAILED"
-            
+
             print(f"-> [{ruff_status}] Ruff")
         else:
             ruff_status = "NOT FOUND"
@@ -302,7 +313,7 @@ if __name__ == "__main__":
         try:
             verilator_executable_path = executable_locater.locate_verilator_executable()
             verilator_bin_dir: str = str(verilator_executable_path.parent)
-    
+
             if verilator_bin_dir not in os.environ.get("PATH", ""):
                 os.environ["PATH"] = verilator_bin_dir + os.pathsep + os.environ.get("PATH", "")
         except FileNotFoundError:
@@ -323,7 +334,7 @@ if __name__ == "__main__":
                 "-I" + str(RTL_DIR_PATH),
                 str(RTL_DIR_PATH/f"{TOP_MODULE}.v")
             ]
-            
+
             verilator_result: CompletedProcess[str] = subprocess.run(
                 verilator_cmd,
                 cwd = MAIN_DIR_PATH,
@@ -359,7 +370,7 @@ if __name__ == "__main__":
             )
 
             mypy_status = "SUCCESS" if mypy_result.returncode == 0 else "FAILED"
-            
+
             print(f"-> [{mypy_status}] Mypy")
         else:
             mypy_status = "NOT FOUND"
@@ -406,25 +417,25 @@ if __name__ == "__main__":
 
         simulation_step = cfg.simulation.simulation_step,
         total_simulation_time = cfg.simulation.total_simulation_time,
-    
+
         ambient_pressure_quantized =  cfg.ambient.ambient_pressure_quantized,
         ambient_temperature_quantized =  cfg.ambient.ambient_temperature_quantized,
-    
+
         pre_calculated_rotor_inertial_time_const_quantized = cfg.inertia.pre_calculated_rotor_inertial_time_const_quantized,
         pre_calculated_pressure_volume_time_const_quantized = cfg.inertia.pre_calculated_pressure_volume_time_const_quantized,
         pre_calculated_thermal_time_const_quantized = cfg.inertia.pre_calculated_thermal_time_const_quantized,
-    
+
         speed_gain_coeff_quantized = cfg.gain.speed_gain_coeff_quantized,
         compressor_pressure_gain_quantized = cfg.gain.compressor_pressure_gain_quantized,
         combustion_heat_gain_quantized = cfg.gain.combustion_heat_gain_quantized,
         mass_overflow_cooling_gain_quantized = cfg.gain.mass_overflow_cooling_gain_quantized,
-    
+
         max_rotational_speed_quantized = cfg.limit.max_rotational_speed_quantized,
         max_compressor_temperature_quantized = cfg.limit.max_compressor_temperature_quantized,
 
         software_results_file_path = SOFTWARE_RESULTS_FILE_PATH
     )
-    
+
     aircraft_engine_simulator_fixed_point = AircraftEngineSimulatorFixedPoint(
         config_aircraft_engine_simulator_fixed_point = config_aircraft_engine_simulator_fixed_point
     )
@@ -514,6 +525,13 @@ if __name__ == "__main__":
 
     synthesis_runner = SynthesisRunner(config_synthesis_runner = config_synthesis_runner)
 
+    # Physical Realism Verifier.
+    config_physical_realism_verifier = ConfigPhysicalRealismVerifier(
+        plateau_duration = plateau_duration
+    )
+
+    physical_realism_verifier = PhysicalRealismVerifier(config_physical_realism_verifier = config_physical_realism_verifier)
+
     # ------- Workflow. -------
     # Runs the aircraft engine simulation both floating and fixed point.
     fuel_flow_history_floating, speed_history_floating, pressure_history_floating, temperature_history_floating, time_history = aircraft_engine_simulator_floating.run_simulation(
@@ -523,15 +541,15 @@ if __name__ == "__main__":
     #: time_history stays stable independent from the representation, so it doesnt need to be returned from floating simulation as well.
     fuel_flow_history_fixed_point, speed_history_fixed_point, pressure_history_fixed_point, temperature_history_fixed_point, engine_status_history, _ = aircraft_engine_simulator_fixed_point.run_simulation(
         initial_conditions = (
-            0, 
-            cfg.ambient.ambient_pressure_quantized, 
+            0,
+            cfg.ambient.ambient_pressure_quantized,
             cfg.ambient.ambient_temperature_quantized
         )
     )
 
     # Scales the integer values from fixed point representation back to the normal range.
     fixed_point_scale_factor: int = 2 ** cfg.representation.fractional_bit_width
-    
+
     fuel_flow_history_fixed_point_scaled: NDArray[float64] = fuel_flow_history_fixed_point / fixed_point_scale_factor
     speed_history_fixed_point_scaled: NDArray[float64] = speed_history_fixed_point / fixed_point_scale_factor
     pressure_history_fixed_point_scaled: NDArray[float64] = pressure_history_fixed_point / fixed_point_scale_factor
