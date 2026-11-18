@@ -389,7 +389,7 @@ class AircraftEngineSimulatorFixedPoint:
             current_temperature: int64 = temperature_history[i]
 
             # Calculates the target values.
-            target_speed, target_pressure, target_temperature = self._engine_datapath_fixed_point._calculate_target_values(
+            target_speed, target_pressure, target_temperature = self._engine_datapath_fixed_point.calculate_target_values(
                 current_fuel_flow = current_fuel_flow,
                 current_rotational_speed = current_speed,
                 gain_constants = (speed_gain_coeff, compressor_pressure_gain, combustion_heat_gain, mass_overflow_cooling_gain)
@@ -398,24 +398,16 @@ class AircraftEngineSimulatorFixedPoint:
             # Calculates the derivatives.
             current_values: quantized_values_type = (current_speed, current_pressure, current_temperature)
 
-            d_speed, d_pressure, d_temperature = self._engine_datapath_fixed_point._calculate_derivatives(
+            d_speed, d_pressure, d_temperature = self._engine_datapath_fixed_point.calculate_derivatives(
                 current_values = current_values,
                 target_values = (target_speed, target_pressure, target_temperature)
             )
 
             # Calculates the next step values.
-            next_speed, next_pressure, next_temperature = self._engine_datapath_fixed_point._calculate_next_step(
+            next_speed, next_pressure, next_temperature = self._engine_datapath_fixed_point.calculate_next_step(
                 current_values = current_values,
                 derivative_values = (d_speed, d_pressure, d_temperature)
             )
-
-            # ------- Controls the next values. -------
-            # Clamps the results to minimum safeguards.
-            next_speed = max(next_speed, 0)
-
-            next_pressure = max(next_pressure, self._cfg.ambient_pressure_quantized)
-
-            next_temperature = max(next_temperature, self._cfg.ambient_temperature_quantized)
 
             # Monitors for maximum limit breaches.
             if (current_speed > self._cfg.max_rotational_speed_quantized) or \
@@ -434,9 +426,16 @@ class AircraftEngineSimulatorFixedPoint:
         engine_status_history[total_steps] = is_engine_broken
 
         # Packs all the histories in a single tuple.
-        histories: histories_type = (fuel_flow_history, speed_history, pressure_history, temperature_history, engine_status_history, time_history)
+        histories: histories_type = (
+            fuel_flow_history,
+            speed_history,
+            pressure_history,
+            temperature_history,
+            engine_status_history,
+            time_history
+        )
 
-        # Exports the input and output histories, so the data can be used as a golden reference, when compared to hardware outputs.
+        # Exports the input and output histories.
         self._export_histories(histories = histories)
 
         return histories

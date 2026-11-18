@@ -34,7 +34,7 @@ class EngineDatapathFixedPoint:
         #TODO AD
         self._cfg: ConfigEngineDatapathFixedPoint = config_engine_datapath_fixed_point
 
-    def _calculate_target_values(
+    def calculate_target_values(
             self,
             current_fuel_flow: int,
             current_rotational_speed: int,
@@ -84,7 +84,7 @@ class EngineDatapathFixedPoint:
 
         return (target_rotational_speed, target_compressor_pressure, target_exhaust_gas_temperature)
 
-    def _calculate_derivatives(
+    def calculate_derivatives(
             self,
             current_values: quantized_values_type,
             target_values: quantized_values_type
@@ -131,29 +131,12 @@ class EngineDatapathFixedPoint:
 
         return (d_rotational_speed, d_compressor_pressure, d_exhaust_gas_temperature)
 
-    def _calculate_next_step(
+    def calculate_next_step(
             self,
             current_values: quantized_values_type,
             derivative_values: quantized_values_type
     ) -> quantized_values_type:
-        """
-        Advances engine states by one discrete step using forward Euler accumulation.
-
-        Mathematical Formulations:
-        1. N[k+1] = N[k] + dN[k]
-        2. P[k+1] = P[k] + dP[k]
-        3. T[k+1] = T[k] + dT[k]
-
-        Args:
-            current_values (quantized_values_type): Tuple of states at step k (N[k], P[k], T[k]) in LSBs.
-            derivative_values (quantized_values_type): Tuple of discrete delta increments (dN[k], dP[k], dT[k]) in LSBs.
-
-        Returns:
-            quantized_values_type: Tuple of un-clamped updated states for step k+1:
-                - next_rotational_speed (int): Accumulated rotational speed (N[k+1]).
-                - next_compressor_pressure (int): Accumulated compressor pressure (P[k+1]).
-                - next_exhaust_gas_temperature (int): Accumulated exhaust gas temperature (T[k+1]).
-        """
+        #TODO AD
         # Unpacks the parameters.
         current_rotational_speed, current_compressor_pressure, current_exhaust_gas_temperature = current_values
         d_rotational_speed, d_compressor_pressure, d_exhaust_gas_temperature = derivative_values
@@ -164,5 +147,10 @@ class EngineDatapathFixedPoint:
         next_compressor_pressure: int = current_compressor_pressure + d_compressor_pressure
 
         next_exhaust_gas_temperature: int = current_exhaust_gas_temperature + d_exhaust_gas_temperature
+
+        # Clamps the results to minimum safeguards.
+        next_rotational_speed = max(next_rotational_speed, 0)
+        next_compressor_pressure = max(next_compressor_pressure, self._cfg.ambient_pressure_quantized)
+        next_exhaust_gas_temperature = max(next_exhaust_gas_temperature, self._cfg.ambient_temperature_quantized)
 
         return (next_rotational_speed, next_compressor_pressure, next_exhaust_gas_temperature)
